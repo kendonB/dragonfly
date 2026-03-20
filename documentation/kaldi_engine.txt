@@ -88,9 +88,6 @@ using::
 
   pip install 'dragonfly[kaldi]'
 
-This remains the canonical install path and now installs the supported
-``kaldi-active-grammar`` 3.2.x line.
-
 If you are installing to *develop* Dragonfly, use the following instead
 (from your Dragonfly git repository)::
 
@@ -152,7 +149,7 @@ Updating To A New Version
 
 When updating to a new version of Dragonfly, you should always rerun
 ``pip install 'dragonfly[kaldi]'`` (or ``pip install '.[kaldi]'``, etc.) to
-make sure you get the required ``kaldi_active_grammar`` 3.2.x version.
+make sure you get the required version of kaldi_active_grammar.
 
 
 Engine Configuration
