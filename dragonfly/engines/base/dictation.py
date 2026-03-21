@@ -83,7 +83,7 @@ Markdown example:
 ..  code:: python
 
     mapping = {
-        # Define a command for typing Markdown headings 1 to 6 with optional
+        # Define a command for typing Markdown headings 1 to 7 with optional
         # capitalized text.
         "heading [<num>] [<capitalised_text>]":
             Text("#")*Repeat("num") + Text(" %(capitalised_text)s"),
@@ -91,7 +91,7 @@ Markdown example:
 
     extras = [
         Dictation("capitalised_text", default="").capitalize(),
-        IntegerRef("num", 1, 6, 1),
+        IntegerRef("num", 1, 7, 1),
     ]
 
     rule = MappingRule(name="MdExample", mapping=mapping, extras=extras)
