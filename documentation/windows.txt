@@ -4,13 +4,15 @@ Windows sub-package
 
 Dragonfly includes several toolkits for non-speech user interfaces.
 These include for example, cross-platform generic window control, access to
-monitor information and access to the system clipboard.
+monitor information, simple geometry helpers and access to the system
+clipboard.
 
 Contents of Dragonfly's windows sub-package:
 
 .. toctree::
    :maxdepth: 2
 
+   geometry_classes
    clipboard
    monitor_classes
    window_classes
