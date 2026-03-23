@@ -128,7 +128,10 @@ setup(
                         "setuptools >= 40.0.0",
                         "packaging >= 19.0",
                         "six",
-                        "lark-parser >= 0.8.0",
+                        # Use the renamed package on modern Python versions,
+                        # while keeping compatibility with older versions.
+                        "lark>=1.0.0;python_version>='3.8'",
+                        "lark-parser>=0.8.0;python_version<'3.8'",
 
                         # Windows-only dependencies.
                         "pywin32;platform_system=='Windows'",
