@@ -582,6 +582,101 @@ If you want to replace all uses of standard ``Dictation`` in a file::
   from dragonfly.engines.backend_kaldi.dictation import DefaultDictation as Dictation
 
 
+NVIDIA Nemotron ASR Streaming (NIM)
+............................................................................
+
+Deploy NVIDIA Nemotron ASR Streaming with NIM first:
+`https://build.nvidia.com/nvidia/nemotron-asr-streaming/deploy
+<https://build.nvidia.com/nvidia/nemotron-asr-streaming/deploy>`_.
+Then install the websocket client library::
+
+  pip install websockets
+
+Use NIM by passing ``alternative_dictation=<callable>`` to
+``get_engine("kaldi", ...)`` and mark the dictation slot with
+``AlternativeDictation("text")``::
+
+  import asyncio
+  import base64
+  import json
+
+  import websockets
+
+  from dragonfly import Function, MappingRule, get_engine
+  from dragonfly.engines.backend_kaldi.dictation import AlternativeDictation
+
+  WS_URL = "ws://127.0.0.1:9000/v1/realtime?intent=transcription"
+  MODEL_NAME = "cache-aware-parakeet-rnnt-en-US-asr-streaming-sortformer"
+  SAMPLE_RATE = 16000
+  CHANNELS = 1
+  CHUNK_MS = 200
+  BYTES_PER_SAMPLE = 2
+  CHUNK_SIZE = SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE * CHUNK_MS // 1000
+
+  def _iter_audio_chunks(audio_data):
+      for index in range(0, len(audio_data), CHUNK_SIZE):
+          yield audio_data[index:index + CHUNK_SIZE]
+
+  async def _transcribe_with_nim(audio_data):
+      async with websockets.connect(WS_URL, max_size=None) as ws:
+          await ws.send(json.dumps({
+              "type": "transcription_session.update",
+              "session": {
+                  "input_audio_format": "pcm16",
+                  "input_audio_transcription": {
+                      "language": "en-US",
+                      "model": MODEL_NAME,
+                  },
+                  "input_audio_params": {
+                      "sample_rate_hz": SAMPLE_RATE,
+                      "num_channels": CHANNELS,
+                  },
+                  "recognition_config": {
+                      "enable_automatic_punctuation": True,
+                      "enable_word_time_offsets": False,
+                      "max_alternatives": 1,
+                  },
+              },
+          }))
+
+          for event_id, chunk in enumerate(_iter_audio_chunks(audio_data)):
+              await ws.send(json.dumps({
+                  "event_id": "append_%d" % event_id,
+                  "type": "input_audio_buffer.append",
+                  "audio": base64.b64encode(chunk).decode("ascii"),
+              }))
+
+          await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+
+          while True:
+              message = await ws.recv()
+              if isinstance(message, bytes):
+                  continue
+              event = json.loads(message)
+              event_type = event.get("type")
+              if event_type == "error":
+                  raise RuntimeError(event.get("error", {}).get("message", repr(event)))
+              if event_type == "conversation.item.input_audio_transcription.failed":
+                  raise RuntimeError(event.get("error", {}).get("message", repr(event)))
+              if event_type == "conversation.item.input_audio_transcription.completed":
+                  return event.get("transcript", "")
+
+  def nemotron_alternative_dictation(audio_data):
+      return asyncio.run(_transcribe_with_nim(audio_data))
+
+  engine = get_engine(
+      "kaldi",
+      model_dir="kaldi_model",
+      alternative_dictation=nemotron_alternative_dictation,
+  )
+
+  class ExampleRule(MappingRule):
+      mapping = {
+          "dictate <text>": Function(lambda text: print(text)),
+      }
+      extras = [AlternativeDictation("text")]
+
+
 Limitations & Future Work
 ----------------------------------------------------------------------------
 
