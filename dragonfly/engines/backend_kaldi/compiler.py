@@ -32,8 +32,7 @@ from six.moves             import map, range
 
 from dragonfly.grammar       import elements as elements_
 from dragonfly.engines.base  import CompilerBase, CompilerError
-from dragonfly.engines.backend_kaldi.dictation import (AlternativeDictation,
-                                                       DefaultDictation,
+from dragonfly.engines.backend_kaldi.dictation import (_get_dictation_nonterminal,
                                                        UserDictation)
 
 #---------------------------------------------------------------------------
@@ -336,8 +335,7 @@ class KaldiCompiler(CompilerBase, KaldiAGCompiler):
         src_state = self.add_weight_linkage(src_state, dst_state, self.get_weight(element), fst)
         # fst.add_arc(src_state, dst_state, '#nonterm:dictation', olabel=WFST.eps)
         extra_state = fst.add_state()
-        cloud_dictation = isinstance(element, (AlternativeDictation, DefaultDictation)) and element.cloud
-        dictation_nonterm = '#nonterm:dictation_cloud' if cloud_dictation else '#nonterm:dictation'
+        dictation_nonterm = _get_dictation_nonterminal(element)
         fst.add_arc(src_state, extra_state, '#nonterm:dictation', dictation_nonterm)
         # Accepts zero or more words
         fst.add_arc(extra_state, dst_state, WFST.eps, '#nonterm:end')

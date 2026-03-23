@@ -86,6 +86,12 @@ _user_dictation_sequence_rule = _UserDictationSequenceRule()
 #---------------------------------------------------------------------------
 # Alternative dictation classes -- elements capable of default or alternative dictation.
 
+def _get_dictation_nonterminal(element):
+    if isinstance(element, (AlternativeDictation, DefaultDictation)) and element.alternative:
+        return '#nonterm:dictation_cloud'
+    return '#nonterm:dictation'
+
+
 class AlternativeDictation(BaseDictation):
 
     alternative_default = True

@@ -120,6 +120,7 @@ engine_tests_dict = {
     ] + common_names,
 
     "kaldi": [
+        "test_dictation_kaldi",
         "test_engine_kaldi",
         "test_language_en_number",
 
