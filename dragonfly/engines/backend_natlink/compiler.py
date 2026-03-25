@@ -64,11 +64,34 @@ class NatlinkCompiler(CompilerBase):
     #-----------------------------------------------------------------------
     # Methods for compiling elements.
 
+    def _compile_unbounded_repetition(self, element, compiler):
+        if element.min > 1:
+            compiler.start_sequence()
+            for unused_index in range(element.min - 1):
+                self.compile_element(element._child, compiler)
+
+        if element.min == 0:
+            compiler.start_optional()
+
+        compiler.start_repetition()
+        self.compile_element(element._child, compiler)
+        compiler.end_repetition()
+
+        if element.min == 0:
+            compiler.end_optional()
+
+        if element.min > 1:
+            compiler.end_sequence()
+
     def _compile_sequence(self, element, compiler):
         children = element.children
+        is_rep = isinstance(element, elements_.Repetition)
+        if is_rep and element.unbounded:
+            self._compile_unbounded_repetition(element, compiler)
+            return
+
         if len(children) > 1:
             # Compile Sequence and Repetition elements differently.
-            is_rep = isinstance(element, elements_.Repetition)
             if is_rep and element.optimize:
                 compiler.start_repetition()
                 self.compile_element(children[0], compiler)

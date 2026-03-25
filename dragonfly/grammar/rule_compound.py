@@ -68,6 +68,7 @@ from six                          import string_types
 
 from dragonfly.grammar.rule_base  import Rule
 from dragonfly.grammar.elements   import ElementBase, Compound
+from dragonfly.grammar.elements_compound import extract_compound_extras
 
 
 #---------------------------------------------------------------------------
@@ -149,13 +150,9 @@ class CompoundRule(Rule):
             "_rule":     self,
             "_node":     node,
         }
-        extras.update(self._defaults)
-        for name, element in self._extras.items():
-            extra_node = node.get_child_by_name(name, shallow=True)
-            if extra_node:
-                extras[name] = extra_node.value()
-            elif element.has_default():
-                extras[name] = element.default
+        extras.update(extract_compound_extras(
+            node.children[0], self._extras, defaults=self._defaults,
+        ))
 
         # Call the method to do the actual processing.
         self._process_recognition(node, extras)

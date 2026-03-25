@@ -79,6 +79,7 @@ from six                          import string_types
 
 from dragonfly.grammar.rule_base  import Rule
 from dragonfly.grammar.elements   import ElementBase, Compound, Alternative
+from dragonfly.grammar.elements_compound import extract_compound_extras
 from dragonfly.actions.actions    import ActionBase
 
 
@@ -164,23 +165,20 @@ class MappingRule(Rule):
         return [k for k, _ in self._mapping.items()]
 
     def value(self, node):
-        node = node.children[0]
-        value = node.value()
+        alternative_node = node.children[0]
+        value = alternative_node.value()
+        match_node = alternative_node.children[0]
 
         if hasattr(value, "copy_bind"):
             # Prepare *extras* dict for passing to _copy_bind().
             extras = {
                 "_grammar":  self.grammar,
                 "_rule":     self,
-                "_node":     node,
+                "_node":     alternative_node,
             }
-            extras.update(self._defaults)
-            for name, element in self._extras.items():
-                extra_node = node.get_child_by_name(name, shallow=True)
-                if extra_node:
-                    extras[name] = extra_node.value()
-                elif element.has_default():
-                    extras[name] = element.default
+            extras.update(extract_compound_extras(
+                match_node, self._extras, defaults=self._defaults,
+            ))
 
             value = value.copy_bind(extras)
 
@@ -205,13 +203,10 @@ class MappingRule(Rule):
             "_rule":     self,
             "_node":     node,
         }
-        extras.update(self._defaults)
-        for name, element in self._extras.items():
-            extra_node = node.get_child_by_name(name, shallow=True)
-            if extra_node:
-                extras[name] = extra_node.value()
-            elif element.has_default():
-                extras[name] = element.default
+        match_node = node.children[0].children[0]
+        extras.update(extract_compound_extras(
+            match_node, self._extras, defaults=self._defaults,
+        ))
 
         # Call the method to do the actual processing.
         self._process_recognition(item_value, extras)

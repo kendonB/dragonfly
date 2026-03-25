@@ -558,6 +558,51 @@ class Alternative(ElementBase):
 
 #---------------------------------------------------------------------------
 
+def element_matches_empty(element, memo=None):
+    """
+        Return ``True`` if *element* can match an empty recognition.
+
+        This is used to reject unbounded repetitions of empty-matchable
+        expressions, which would otherwise lead to infinite decode loops.
+    """
+    if memo is None:
+        memo = set()
+
+    element_id = id(element)
+    if element_id in memo:
+        return False
+    memo.add(element_id)
+
+    try:
+        if isinstance(element, Empty):
+            return True
+        if isinstance(element, Impossible):
+            return False
+        if isinstance(element, Optional):
+            return True
+        if isinstance(element, Literal):
+            return len(element.words) == 0
+        if isinstance(element, Dictation):
+            return False
+        if isinstance(element, ListRef):
+            return False
+        if isinstance(element, RuleRef):
+            return element_matches_empty(element.rule.element, memo)
+        if isinstance(element, Alternative):
+            return len(element.children) == 0 or any(
+                element_matches_empty(child, memo)
+                for child in element.children
+            )
+        if isinstance(element, Sequence):
+            return all(element_matches_empty(child, memo)
+                       for child in element.children)
+        return False
+    finally:
+        memo.remove(element_id)
+
+
+#---------------------------------------------------------------------------
+
 class Repetition(Sequence):
     """
         Element class representing a repetition of one child element.
@@ -572,6 +617,8 @@ class Repetition(Sequence):
            the maximum number of times that the child element must
            be recognized (exclusive!); if *None*, the child element must be
            recognized exactly *min* times (i.e. *max = min + 1*)
+         - *unbounded* (*bool*, default: *False*) --
+           whether the child element may repeat without an upper bound
          - *name* (*str*, default: *None*) --
            the name of this element
          - *default* (*object*, default: *None*) --
@@ -604,34 +651,47 @@ class Repetition(Sequence):
     # pylint: disable=redefined-builtin,unused-variable
 
     def __init__(self, child, min=1, max=None, name=None, default=None,
-                 optimize=True):
+                 optimize=True, unbounded=False):
         if not isinstance(child, ElementBase):
             raise TypeError("Child of %s object must be an"
                             " ElementBase instance." % self)
         assert isinstance(min, six.integer_types)
         assert max is None or isinstance(max, six.integer_types)
+        assert isinstance(unbounded, bool)
         assert max is None or min < max, "min must be less than max"
+        if unbounded and max is not None:
+            raise ValueError("unbounded repetitions cannot define max")
+        if unbounded and element_matches_empty(child):
+            raise ValueError("unbounded repetition child cannot match empty")
 
         self._child = child
         self._min = min
-        if max is None: self._max = min + 1
-        else:           self._max = max
+        self._unbounded = unbounded
+        if unbounded:
+            self._max = None
+        elif max is None:
+            self._max = min + 1
+        else:
+            self._max = max
         self._optimize = optimize
 
-        optional_length = self._max - self._min - 1
-        if optional_length > 0:
-            element = Optional(child)
-            for index in range(optional_length-1):
-                element = Optional(Sequence([child, element]))
-
-            if self._min >= 1:
-                children = [child] * self._min + [element]
-            else:
-                children = [element]
-        elif self._min > 0:
-            children = [child] * self._min
+        if self._unbounded:
+            children = [child]
         else:
-            raise ValueError("Repetition not allowed to be empty.")
+            optional_length = self._max - self._min - 1
+            if optional_length > 0:
+                element = Optional(child)
+                for index in range(optional_length-1):
+                    element = Optional(Sequence([child, element]))
+
+                if self._min >= 1:
+                    children = [child] * self._min + [element]
+                else:
+                    children = [element]
+            elif self._min > 0:
+                children = [child] * self._min
+            else:
+                raise ValueError("Repetition not allowed to be empty.")
 
         Sequence.__init__(self, children, name=name, default=default)
 
@@ -655,6 +715,12 @@ class Repetition(Sequence):
         "optimally. (Read-only)"
     )
 
+    unbounded = property(
+        lambda self: self._unbounded,
+        doc="Whether the child may repeat without an upper bound. "
+        "(Read-only)"
+    )
+
     def dependencies(self, memo):
         if self._id in memo:
             return []
@@ -663,6 +729,58 @@ class Repetition(Sequence):
 
     #-----------------------------------------------------------------------
     # Methods for runtime recognition processing.
+
+    def decode(self, state):
+        state.decode_attempt(self)
+
+        max_count = self._max
+        min_count = self._min
+        child = self._child
+        unbounded = self._unbounded
+
+        class _Frame(object):
+            __slots__ = ("count", "child_results", "can_accept",
+                         "accept_yielded")
+
+            def __init__(self, count):
+                self.count = count
+                if unbounded:
+                    self.child_results = child.decode(state)
+                elif count < max_count - 1:
+                    self.child_results = child.decode(state)
+                else:
+                    self.child_results = None
+
+                self.can_accept = (
+                    count >= min_count
+                    and (unbounded or count < max_count)
+                )
+                self.accept_yielded = False
+
+        stack = [_Frame(0)]
+        while stack:
+            frame = stack[-1]
+
+            if frame.child_results is not None:
+                try:
+                    next(frame.child_results)
+                except StopIteration:
+                    frame.child_results = None
+                else:
+                    # Prefer longer matches first to preserve the historical
+                    # greedy behavior of bounded repetitions.
+                    stack.append(_Frame(frame.count + 1))
+                    continue
+
+            if frame.can_accept and not frame.accept_yielded:
+                frame.accept_yielded = True
+                state.decode_success(self)
+                yield state
+                state.decode_retry(self)
+                continue
+
+            stack.pop()
+        state.decode_failure(self)
 
     def get_repetitions(self, node):
         """
@@ -677,31 +795,11 @@ class Repetition(Sequence):
 
         """
         repetitions = []
-        for index in range(self._min):
-            element = node.children[index]
-            if element.actor != self._child:
-                raise TypeError("Invalid child of %s: %s" \
-                    % (self, element.actor))
-            repetitions.append(element)
-
-        if self._max - self._min > 1:
-            optional = node.children[-1]
-            while optional.children:
-                child = optional.children[0]
-                if isinstance(child.actor, Sequence):
-                    assert len(child.children) == 2
-                    element, optional = child.children
-                    if element.actor != self._child:
-                        raise TypeError("Invalid child of %s: %s" \
-                            % (self, element.actor))
-                    repetitions.append(element)
-                elif child.actor == self._child:
-                    repetitions.append(child)
-                    break
-                else:
-                    raise TypeError("Invalid child of %s: %s" \
-                        % (self, child.actor))
-
+        for child in node.children:
+            if child.actor != self._child:
+                raise TypeError("Invalid child of %s: %s"
+                                % (self, child.actor))
+            repetitions.append(child)
         return repetitions
 
     def value(self, node):

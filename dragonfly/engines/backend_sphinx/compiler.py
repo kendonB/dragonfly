@@ -148,7 +148,30 @@ class JSGFCompiler(CompilerBase):
                                   " for element type %s."
                                   % (self, element))
 
+    def _compile_unbounded_repetition(self, element, repeat_class, *args,
+                                      **kwargs):
+        repeated_child = repeat_class(
+            self.compile_element(element._child, *args, **kwargs)
+        )
+
+        if element.min == 0:
+            return jsgf.OptionalGrouping(repeated_child)
+        if element.min == 1:
+            return repeated_child
+
+        children = [
+            self.compile_element(element._child, *args, **kwargs)
+            for unused_index in range(element.min - 1)
+        ]
+        children.append(repeated_child)
+        return jsgf.Sequence(*children)
+
     def _compile_repetition(self, element, *args, **kwargs):
+        if element.unbounded:
+            return self._compile_unbounded_repetition(
+                element, jsgf.Repeat, *args, **kwargs
+            )
+
         # Compile the first element only; pyjsgf doesn't support limits on
         # repetition (yet).
         children = element.children
@@ -249,6 +272,11 @@ class SphinxJSGFCompiler(JSGFCompiler):
     # Methods for compiling elements.
 
     def _compile_repetition(self, element, *args, **kwargs):
+        if element.unbounded:
+            return self._compile_unbounded_repetition(
+                element, PatchedRepeat, *args, **kwargs
+            )
+
         # Compile the first element only; pyjsgf doesn't support limits on
         # repetition (yet).
         children = element.children

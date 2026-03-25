@@ -229,6 +229,31 @@ class KaldiCompiler(CompilerBase, KaldiAGCompiler):
     def _compile_sequence(self, element, src_state, dst_state, grammar, kaldi_rule, fst):
         src_state = self.add_weight_linkage(src_state, dst_state, self.get_weight(element), fst)
         children = element.children
+        is_repetition = isinstance(element, elements_.Repetition)
+        if is_repetition and element.unbounded:
+            current_src_state = src_state
+            for unused_index in range(max(element.min - 1, 0)):
+                next_state = fst.add_state()
+                self.compile_element(element._child, current_src_state,
+                                     next_state, grammar, kaldi_rule, fst)
+                current_src_state = next_state
+
+            loop_src_state = fst.add_state()
+            loop_dst_state = fst.add_state()
+            if element.min == 0:
+                fst.add_arc(current_src_state, dst_state, None)
+            fst.add_arc(current_src_state, loop_src_state, None)
+            self.compile_element(element._child, loop_src_state, loop_dst_state,
+                                 grammar, kaldi_rule, fst)
+            if not fst.has_eps_path(loop_src_state, loop_dst_state,
+                                    self._eps_like_nonterms):
+                fst.add_arc(loop_dst_state, loop_src_state, fst.eps_disambig,
+                            fst.eps)
+                fst.add_arc(loop_dst_state, dst_state, None)
+                return
+            raise CompilerError("Cannot compile unbounded repetition whose "
+                                "child can match empty")
+
         # Optimize for special lengths
         if len(children) == 0:
             fst.add_arc(src_state, dst_state, None)
@@ -239,7 +264,6 @@ class KaldiCompiler(CompilerBase, KaldiAGCompiler):
 
         else:  # len(children) >= 2:
             # Handle Repetition elements differently as a special case
-            is_repetition = isinstance(element, elements_.Repetition)
             if is_repetition and element.optimize:
                 # Repetition...
                 # Insert new states, so back arc only affects child
