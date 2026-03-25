@@ -109,11 +109,13 @@ else:
 # Define doctests for each engine.
 engine_tests_dict = {
     "sapi5": [
+        "test_compiler_sapi5",
         "test_engine_sapi5",
         "test_language_en_number",
     ] + common_names,
 
     "sphinx": [
+        "test_compiler_sphinx",
         "test_engine_sphinx",
         "test_language_en_number",
         "test_dictation",

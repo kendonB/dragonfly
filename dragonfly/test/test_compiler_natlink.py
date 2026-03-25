@@ -22,10 +22,90 @@ import unittest
 
 from six import PY2
 
-from dragonfly import CompoundRule, Choice, Grammar
+from dragonfly import CompoundRule, Choice, Grammar, Literal, Repetition
 
 
 class TestCompilerNatlink(unittest.TestCase):
+
+    def test_zero_or_more_repetition_optimize_false_is_optional_repetition(self):
+        from dragonfly.engines.backend_natlink.compiler import NatlinkCompiler
+
+        class RecordingCompiler(object):
+
+            def __init__(self):
+                self.events = []
+
+            def start_optional(self):
+                self.events.append("start_optional")
+
+            def end_optional(self):
+                self.events.append("end_optional")
+
+            def start_repetition(self):
+                self.events.append("start_repetition")
+
+            def end_repetition(self):
+                self.events.append("end_repetition")
+
+            def add_word(self, word):
+                self.events.append(("word", word))
+
+        compiler = NatlinkCompiler()
+        recorder = RecordingCompiler()
+        compiler.compile_element(
+            Repetition(Literal("hello"), min=0, unbounded=True,
+                       optimize=False),
+            recorder,
+        )
+
+        assert recorder.events == [
+            "start_optional",
+            "start_repetition",
+            ("word", "hello"),
+            "end_repetition",
+            "end_optional",
+        ]
+
+    def test_unbounded_repetition_optimize_false_preserves_minimum(self):
+        from dragonfly.engines.backend_natlink.compiler import NatlinkCompiler
+
+        class RecordingCompiler(object):
+
+            def __init__(self):
+                self.events = []
+
+            def start_sequence(self):
+                self.events.append("start_sequence")
+
+            def end_sequence(self):
+                self.events.append("end_sequence")
+
+            def start_repetition(self):
+                self.events.append("start_repetition")
+
+            def end_repetition(self):
+                self.events.append("end_repetition")
+
+            def add_word(self, word):
+                self.events.append(("word", word))
+
+        compiler = NatlinkCompiler()
+        recorder = RecordingCompiler()
+        compiler.compile_element(
+            Repetition(Literal("hello"), min=3, unbounded=True,
+                       optimize=False),
+            recorder,
+        )
+
+        assert recorder.events == [
+            "start_sequence",
+            ("word", "hello"),
+            ("word", "hello"),
+            "start_repetition",
+            ("word", "hello"),
+            "end_repetition",
+            "end_sequence",
+        ]
 
     def test_natlink_compiler(self):
         from dragonfly.engines.backend_natlink.compiler import NatlinkCompiler

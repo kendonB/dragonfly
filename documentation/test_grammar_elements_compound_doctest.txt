@@ -48,3 +48,31 @@ therefore have three elements, even when "there" is not spoken. ::
     [u'hello', None, u'universe']
     >>> tester.recognize("hello galaxy")
     RecognitionFailure
+
+
+Inline repetition
+----------------------------------------------------------------------------
+
+Repeated extras can be expressed directly in the compound spec using
+open-ended brace ranges. Repeated extras are returned as lists when used
+from a value function. ::
+
+    >>> element = Compound(
+    ...     "test <food>{1,}",
+    ...     extras=[Choice("food", {"apple": "good", "burger": "bad"})],
+    ...     value_func=lambda node, extras: extras["food"],
+    ... )
+    >>> tester = ElementTester(element)
+    >>> tester.recognize("test apple burger")
+    ['good', 'bad']
+
+Zero-or-more repetition returns an empty list when nothing is spoken. ::
+
+    >>> element = Compound(
+    ...     "test <food>{0,}",
+    ...     extras=[Choice("food", {"apple": "good", "burger": "bad"})],
+    ...     value_func=lambda node, extras: extras["food"],
+    ... )
+    >>> tester = ElementTester(element)
+    >>> tester.recognize("test")
+    []

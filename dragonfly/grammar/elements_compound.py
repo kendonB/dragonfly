@@ -60,6 +60,102 @@ from dragonfly.parsing.parse           import (spec_parser, ParseError,
 #---------------------------------------------------------------------------
 # The Compound class.
 
+def _collect_extra_name_shapes_from_element(element, memo=None,
+                                           repeated=False):
+    from dragonfly.grammar.elements_basic import Repetition
+
+    if memo is None:
+        memo = set()
+
+    memo_key = (id(element), repeated)
+    if memo_key in memo:
+        return set(), set()
+    memo.add(memo_key)
+
+    if repeated and element.name:
+        return set([element.name]), set()
+    if element.name:
+        return set(), set([element.name])
+
+    repeated_here = repeated or isinstance(element, Repetition)
+    repeated_names = set()
+    scalar_names = set()
+    for child in element.children:
+        child_repeated, child_scalar = _collect_extra_name_shapes_from_element(
+            child, memo, repeated_here
+        )
+        repeated_names.update(child_repeated)
+        scalar_names.update(child_scalar)
+    return repeated_names, scalar_names
+
+
+def _collect_repeated_extra_names_from_node(node, repeated=False):
+    from dragonfly.grammar.elements_basic import Repetition
+
+    names = set()
+    if repeated and node.name:
+        names.add(node.name)
+    if node.name:
+        return names
+
+    repeated_here = repeated or isinstance(node.actor, Repetition)
+    if isinstance(node.actor, Repetition) or not node.children:
+        memo = set()
+        inferred_repeated_names = set()
+        inferred_scalar_names = set()
+        for child in node.actor.children:
+            child_repeated, child_scalar = _collect_extra_name_shapes_from_element(
+                child, memo, repeated_here
+            )
+            inferred_repeated_names.update(child_repeated)
+            inferred_scalar_names.update(child_scalar)
+        names.update(inferred_repeated_names - inferred_scalar_names)
+
+    for child in node.children:
+        names.update(_collect_repeated_extra_names_from_node(child,
+                                                             repeated_here))
+    return names
+
+
+def _normalize_repeated_extra_value(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
+
+
+def extract_compound_extras(node, extras, defaults=None, repeated_extra_names=None):
+    values = {}
+    if defaults:
+        values.update(defaults)
+
+    if repeated_extra_names is None:
+        repeated_extra_names = _collect_repeated_extra_names_from_node(node)
+    else:
+        repeated_extra_names = set(repeated_extra_names)
+
+    for name, element in extras.items():
+        if name in repeated_extra_names:
+            extra_nodes = node.get_children_by_name(name, shallow=True)
+            if extra_nodes:
+                values[name] = [extra_node.value() for extra_node in extra_nodes]
+            elif element.has_default():
+                values[name] = _normalize_repeated_extra_value(element.default)
+            elif name in values:
+                values[name] = _normalize_repeated_extra_value(values[name])
+            else:
+                values[name] = []
+            continue
+
+        extra_node = node.get_child_by_name(name, shallow=True)
+        if extra_node:
+            values[name] = extra_node.value()
+        elif element.has_default():
+            values[name] = element.default
+
+    return values
+
 class Compound(Alternative):
     """
         Element which parses a string spec to create a hierarchy of basic
@@ -177,12 +273,15 @@ class Compound(Alternative):
         if self._value_func is not None:
             # Prepare *extras* dict for passing to value_func().
             extras = {"_node": node}
-            for name, element in self._extras.items():
-                extra_node = node.get_child_by_name(name, shallow=True)
-                if extra_node:
-                    extras[name] = extra_node.value()
-                elif element.has_default():
-                    extras[name] = element.default
+            repeated_extra_names = None
+            if self.name and len(node.children) == 1:
+                repeated_extra_names = _collect_repeated_extra_names_from_node(
+                    node.children[0]
+                )
+            extras.update(extract_compound_extras(
+                node, self._extras,
+                repeated_extra_names=repeated_extra_names,
+            ))
             try:
                 value = self._value_func(node, extras)
             except Exception as e:

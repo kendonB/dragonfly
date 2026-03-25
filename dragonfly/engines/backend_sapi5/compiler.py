@@ -31,7 +31,7 @@ from win32com.client import constants
 
 from dragonfly.engines.base            import CompilerBase, CompilerError
 from dragonfly.grammar.rule_base       import Rule
-from dragonfly.grammar.elements_basic  import Literal
+from dragonfly.grammar.elements_basic  import Literal, Repetition
 
 
 #---------------------------------------------------------------------------
@@ -136,7 +136,30 @@ class Sapi5Compiler(CompilerBase):
     # Methods for compiling elements.
 
     @trace_compile
+    def _compile_unbounded_repetition(self, element, src_state, dst_state,
+                                      grammar, grammar_handle):
+        current_src_state = src_state
+        for unused_index in range(max(element.min - 1, 0)):
+            next_state = current_src_state.Rule.AddState()
+            self.compile_element(element._child, current_src_state, next_state,
+                                 grammar, grammar_handle)
+            current_src_state = next_state
+
+        loop_dst_state = current_src_state.Rule.AddState()
+        if element.min == 0:
+            current_src_state.AddWordTransition(dst_state, '')
+        self.compile_element(element._child, current_src_state, loop_dst_state,
+                             grammar, grammar_handle)
+        loop_dst_state.AddWordTransition(current_src_state, '')
+        loop_dst_state.AddWordTransition(dst_state, '')
+
+    @trace_compile
     def _compile_sequence(self, element, src_state, dst_state, grammar, grammar_handle):
+        if isinstance(element, Repetition) and element.unbounded:
+            self._compile_unbounded_repetition(element, src_state, dst_state,
+                                               grammar, grammar_handle)
+            return
+
         states = [src_state.Rule.AddState() for i in range(len(element.children)-1)]
         states.insert(0, src_state)
         states.append(dst_state)
