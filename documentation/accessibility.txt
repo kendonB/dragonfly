@@ -16,11 +16,15 @@ command::
 Windows
 ----------------------------------------------------------------------------
 
-To use this API on Windows, install `pyia2
-<https://github.com/illinois-dres-aitg/pyia2>`__. To use this with Chrome,
-you may also need to register an additional 64-bit IAccessible2 DLL which
-can be obtained `here
-<https://github.com/ThePacielloGroup/aviewer/blob/Develop/package/IAccessible2Proxy64bit.dll>`__.
+On Windows, ``dragonfly[accessibility]`` installs the supported `uiautomation
+<https://github.com/yinkaisheng/Python-UIAutomation-for-Windows>`__ backend
+dependency. If you are installing backend dependencies manually, use::
+
+  pip install uiautomation
+
+For one transition release, the legacy IA2 backend may still be selected by
+setting ``DRAGONFLY_WINDOWS_ACCESSIBILITY_BACKEND=ia2``, but that backend is
+deprecated and is no longer the default or documented installation path.
 
 X11 (Linux)
 ----------------------------------------------------------------------------

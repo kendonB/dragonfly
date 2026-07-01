@@ -10,6 +10,8 @@ import regex
 import enum
 import logging
 
+from dragonfly.accessibility import base
+
 
 _log = logging.getLogger("accessibility")
 
@@ -195,9 +197,14 @@ def set_cursor_offset(controller, offset):
     def closure(context):
         focused_text = _get_focused_text(context)
         if not focused_text:
-            return None
-        focused_text.set_cursor(offset)
-    controller.run_sync(closure)
+            return False
+        try:
+            focused_text.set_cursor(offset)
+        except base.UnsupportedSelectionError:
+            _log.warning("Focused text does not support programmatic cursor movement.")
+            return False
+        return True
+    return controller.run_sync(closure)
 
 
 def get_text_info(controller, query):
@@ -235,7 +242,11 @@ def move_cursor(controller, query, position):
         nearest = _find_text(query, focused_text.expanded_text, focused_text.cursor)
         if not nearest:
             return False
-        focused_text.set_cursor(nearest[0] if position is CursorPosition.BEFORE else nearest[1])
+        try:
+            focused_text.set_cursor(nearest[0] if position is CursorPosition.BEFORE else nearest[1])
+        except base.UnsupportedSelectionError:
+            _log.warning("Focused text does not support programmatic cursor movement.")
+            return False
         _log.info("Moved cursor")
         return True
     return controller.run_sync(closure)

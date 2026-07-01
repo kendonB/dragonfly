@@ -6,28 +6,50 @@ platform.
 import contextlib
 import os
 import sys
+import warnings
 
 from . import controller
 
 from .utils import (CursorPosition, TextQuery)
 
-# Import and set the controller class based on the current platform.
-# Note: dragonfly._platform_checks is not used here in an effort to keep the
-#  accessibility sub-package modular.
-#  Please see the module docstring of utils.py.
-#
-if ":" in os.environ.get("DISPLAY", ""):
-    # Use the AT-SPI controller on X11.
-    from . import atspi
-    os_controller_class = atspi.Controller
 
-elif sys.platform.startswith("win"):
-    # Use the IAccessible2 controller on Windows.
-    from . import ia2
-    os_controller_class = ia2.Controller
+def _get_windows_controller_class():
+    backend_name = os.environ.get(
+        "DRAGONFLY_WINDOWS_ACCESSIBILITY_BACKEND", "uia").strip().lower()
 
-else:
-    os_controller_class = None
+    if backend_name in ("", "uia"):
+        from . import uia
+        return uia.Controller
+
+    if backend_name == "ia2":
+        warnings.warn("The Windows IA2 accessibility backend is deprecated. "
+                      "Set DRAGONFLY_WINDOWS_ACCESSIBILITY_BACKEND=uia or "
+                      "remove the override to use the supported UIA backend.",
+                      DeprecationWarning)
+        from . import ia2
+        return ia2.Controller
+
+    raise ValueError("Unknown Windows accessibility backend: %r" %
+                     backend_name)
+
+
+def _get_os_controller_class():
+    # Note: dragonfly._platform_checks is not used here in an effort to keep
+    # the accessibility sub-package modular. Please see the module docstring
+    # of utils.py.
+    if ":" in os.environ.get("DISPLAY", ""):
+        # Use the AT-SPI controller on X11.
+        from . import atspi
+        return atspi.Controller
+
+    if sys.platform.startswith("win"):
+        # Use the UI Automation controller on Windows by default.
+        return _get_windows_controller_class()
+
+    return None
+
+
+os_controller_class = _get_os_controller_class()
 
 controller_instance = None
 

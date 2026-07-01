@@ -60,6 +60,7 @@ if os.name == "nt" or IS_X11 or sys.platform == "darwin":
 try:
     import dragonfly.accessibility
     common_names.insert(0, "test_accessibility")
+    common_names.insert(1, "test_accessibility_uia")
 except ImportError:
     pass
 

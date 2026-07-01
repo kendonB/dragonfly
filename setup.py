@@ -148,7 +148,7 @@ setup(
       extras_require={
           "test": test_requirements,
           "accessibility": [
-                            "comtypes;platform_system=='Windows'",
+                            "uiautomation;platform_system=='Windows'",
                             "enum34;python_version<'3.4'",
                             "regex<2022.1.18;python_version<='2.7'",
                             "regex;python_version>'2.7'",
